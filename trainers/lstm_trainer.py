@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import torch
+import os
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from sklearn.preprocessing import MinMaxScaler
@@ -47,6 +48,7 @@ def create_sequences(data, seq_len):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logging.info(f"Utilisation de l'appareil : {device}")
     df = pd.read_parquet("data/SAF_PA_clean.parquet")
     df = df[['close', 'ma_5', 'ma_20', 'return_1d']].dropna()
 
@@ -91,7 +93,9 @@ def main():
             test_loss += loss.item()
     print(f"📊 Test Loss: {test_loss:.6f}")
     logging.info(f"Test Loss: {test_loss:.6f}")
-
+    # Sauvegarde du modèle
+    if not os.path.exists("models"):
+        os.makedirs("models")
     torch.save(model.state_dict(), "models/lstm_safran.pth")
     print("✅ Modèle sauvegardé sous models/lstm_safran.pth")
     logging.info("Modèle sauvegardé sous models/lstm_safran.pth")
