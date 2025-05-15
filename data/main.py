@@ -6,6 +6,8 @@ def download_data(ticker="SAF.PA", start="2010-01-01"):
     end = datetime.datetime.today().strftime('%Y-%m-%d')
     print(f"Téléchargement des données de {ticker} jusqu'à {end}...")
     data = yf.download(ticker, start=start, end=end)
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.droplevel(1)
 
     # Nettoyage
     if isinstance(data, pd.DataFrame):
@@ -31,6 +33,7 @@ def download_data(ticker="SAF.PA", start="2010-01-01"):
     data.to_parquet(parquet_path, index=False)
 
     print(f"Données sauvegardées dans {csv_path} et {parquet_path}")
+    print("📊 Colonnes finales :", data.columns.tolist())
     return data
 
 if __name__ == "__main__":

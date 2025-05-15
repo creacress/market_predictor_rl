@@ -8,7 +8,7 @@ from sklearn.preprocessing import MinMaxScaler
 # Configuration
 SEQ_LEN = 20
 BATCH_SIZE = 32
-EPOCHS = 10
+EPOCHS = 100
 LR = 0.001
 
 class LSTMDataset(Dataset):
@@ -20,7 +20,7 @@ class LSTMDataset(Dataset):
         return len(self.sequences)
 
     def __getitem__(self, idx):
-        return torch.FloatTensor(self.sequences[idx]), torch.FloatTensor([self.targets[idx]])
+        return torch.FloatTensor(self.sequences[idx]), torch.tensor([self.targets[idx]], dtype=torch.float32)
 
 class LSTMModel(nn.Module):
     def __init__(self, input_size):
@@ -36,12 +36,13 @@ def create_sequences(data, seq_len):
     xs, ys = [], []
     for i in range(len(data) - seq_len):
         x = data[i:i+seq_len]
-        y = data[i+seq_len]
+        y = data[i+seq_len][0]  # Cible uniquement la valeur 'close' future
         xs.append(x)
         ys.append(y)
     return np.array(xs), np.array(ys)
 
 def main():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     df = pd.read_parquet("data/SAF_PA_clean.parquet")
     df = df[['close', 'ma_5', 'ma_20', 'return_1d']].dropna()
 
@@ -49,9 +50,15 @@ def main():
     scaled = scaler.fit_transform(df.values)
 
     X, y = create_sequences(scaled, SEQ_LEN)
-    train_loader = DataLoader(LSTMDataset(X, y), batch_size=BATCH_SIZE, shuffle=True)
+    # Split train/test
+    split_idx = int(len(X) * 0.8)
+    X_train, y_train = X[:split_idx], y[:split_idx]
+    X_test, y_test = X[split_idx:], y[split_idx:]
 
-    model = LSTMModel(input_size=X.shape[2])
+    train_loader = DataLoader(LSTMDataset(X_train, y_train), batch_size=BATCH_SIZE, shuffle=True)
+    test_loader = DataLoader(LSTMDataset(X_test, y_test), batch_size=BATCH_SIZE, shuffle=False)
+
+    model = LSTMModel(input_size=X.shape[2]).to(device)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
@@ -59,6 +66,7 @@ def main():
     for epoch in range(EPOCHS):
         total_loss = 0
         for seq, target in train_loader:
+            seq, target = seq.to(device), target.to(device)
             optimizer.zero_grad()
             output = model(seq)
             loss = criterion(output, target)
@@ -66,6 +74,17 @@ def main():
             optimizer.step()
             total_loss += loss.item()
         print(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.6f}")
+
+    # Évaluation
+    model.eval()
+    test_loss = 0
+    with torch.no_grad():
+        for seq, target in test_loader:
+            seq, target = seq.to(device), target.to(device)
+            output = model(seq)
+            loss = criterion(output, target)
+            test_loss += loss.item()
+    print(f"📊 Test Loss: {test_loss:.6f}")
 
     torch.save(model.state_dict(), "models/lstm_safran.pth")
     print("✅ Modèle sauvegardé sous models/lstm_safran.pth")
