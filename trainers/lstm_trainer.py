@@ -49,6 +49,7 @@ def create_sequences(data, seq_len):
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Utilisation de l'appareil : {device}")
+    logging.info(f"Configuration - SEQ_LEN: {SEQ_LEN}, BATCH_SIZE: {BATCH_SIZE}, EPOCHS: {EPOCHS}, LR: {LR}")
     df = pd.read_parquet("data/SAF_PA_clean.parquet")
     df = df[['close', 'ma_5', 'ma_20', 'return_1d']].dropna()
 
@@ -68,6 +69,11 @@ def main():
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
+    # Early stopping variables
+    best_loss = float('inf')
+    patience = 10
+    wait = 0
+
     model.train()
     for epoch in range(EPOCHS):
         total_loss = 0
@@ -81,6 +87,16 @@ def main():
             total_loss += loss.item()
         print(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.6f}")
         logging.info(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.6f}")
+        # Early stopping check
+        if total_loss < best_loss:
+            best_loss = total_loss
+            wait = 0
+        else:
+            wait += 1
+            if wait >= patience:
+                logging.info("Early stopping triggered.")
+                print("🛑 Early stopping triggered.")
+                break
 
     # Évaluation
     model.eval()
