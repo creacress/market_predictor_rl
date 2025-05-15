@@ -4,6 +4,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from sklearn.preprocessing import MinMaxScaler
+import logging
+
+logging.basicConfig(filename='training.log', level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Configuration
 SEQ_LEN = 20
@@ -74,6 +78,7 @@ def main():
             optimizer.step()
             total_loss += loss.item()
         print(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.6f}")
+        logging.info(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.6f}")
 
     # Évaluation
     model.eval()
@@ -85,9 +90,11 @@ def main():
             loss = criterion(output, target)
             test_loss += loss.item()
     print(f"📊 Test Loss: {test_loss:.6f}")
+    logging.info(f"Test Loss: {test_loss:.6f}")
 
     torch.save(model.state_dict(), "models/lstm_safran.pth")
     print("✅ Modèle sauvegardé sous models/lstm_safran.pth")
+    logging.info("Modèle sauvegardé sous models/lstm_safran.pth")
 
 if __name__ == "__main__":
     main()
