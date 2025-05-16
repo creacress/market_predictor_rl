@@ -1,6 +1,13 @@
 import gym
 import numpy as np
 from gym import spaces
+import logging
+
+logging.basicConfig(
+    filename='training_env.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 class SafranTradingEnv(gym.Env):
     def __init__(self, df, initial_balance=10000):
@@ -16,6 +23,7 @@ class SafranTradingEnv(gym.Env):
             low=-np.inf, high=np.inf, shape=(len(self.df.columns) + 2,), dtype=np.float32
         )
         self.reset()
+        logging.info("🔁 Environnement réinitialisé")
 
     def reset(self):
         self.balance = self.initial_balance
@@ -37,15 +45,20 @@ class SafranTradingEnv(gym.Env):
         if action == 1 and self.balance > current_price:  # Buy
             self.shares_held += 1
             self.balance -= current_price
+            logging.info(f"🟢 BUY at {current_price:.2f}, Balance: {self.balance:.2f}, Shares: {self.shares_held}")
         elif action == 2 and self.shares_held > 0:  # Sell
             self.shares_held -= 1
             self.balance += current_price
             self.total_shares_sold += 1
             self.total_sales_value += current_price
+            logging.info(f"🔴 SELL at {current_price:.2f}, Balance: {self.balance:.2f}, Shares: {self.shares_held}")
 
         self.current_step += 1
         done = self.current_step >= len(self.df) - 1
         reward = self.balance + self.shares_held * current_price - self.initial_balance if done else 0
+        if done:
+            profit = self.balance + self.shares_held * current_price - self.initial_balance
+            logging.info(f"🏁 FINISHED | Total profit: {profit:.2f}")
         return self._next_observation(), reward, done, {}
 
     def render(self, mode='human'):

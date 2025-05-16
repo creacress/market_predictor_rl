@@ -7,6 +7,14 @@ from torch.utils.data import DataLoader, Dataset
 from sklearn.preprocessing import MinMaxScaler
 import os
 
+import logging
+
+logging.basicConfig(
+    filename='training_lstm.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 # Config
 SEQ_LEN = 20
 BATCH_SIZE = 32
@@ -56,6 +64,8 @@ def main():
     train_loader = DataLoader(LSTMDataset(X_train, y_train), batch_size=BATCH_SIZE, shuffle=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logging.info(f"📟 Device utilisé : {device}")
+    print(f"📟 Device utilisé : {device}")
     model = LSTMModel(input_size=X.shape[2]).to(device)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
@@ -72,9 +82,11 @@ def main():
             optimizer.step()
             total_loss += loss.item()
         print(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.6f}")
+        logging.info(f"Epoch {epoch+1}/{EPOCHS}, Loss: {total_loss:.6f}")
 
     os.makedirs("models", exist_ok=True)
     torch.save(model.state_dict(), "models/lstm_safran.pth")
+    logging.info("✅ Modèle LSTM sauvegardé sous models/lstm_safran.pth")
     print("✅ Modèle sauvegardé.")
 
 if __name__ == "__main__":
