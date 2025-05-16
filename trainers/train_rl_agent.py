@@ -1,7 +1,7 @@
-
-
 import pandas as pd
 import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from trainers.env_safran_rl import SafranTradingEnv
