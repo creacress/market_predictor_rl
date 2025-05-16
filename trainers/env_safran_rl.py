@@ -6,6 +6,10 @@ class SafranTradingEnv(gym.Env):
     def __init__(self, df, initial_balance=10000):
         super(SafranTradingEnv, self).__init__()
         self.df = df.reset_index(drop=True)
+        self.df["day"] = self.df["date"].dt.day
+        self.df["month"] = self.df["date"].dt.month
+        self.df["weekday"] = self.df["date"].dt.weekday
+        self.df.drop(columns=["date"], inplace=True)
         self.initial_balance = initial_balance
         self.action_space = spaces.Discrete(3)  # 0: hold, 1: buy, 2: sell
         self.observation_space = spaces.Box(
@@ -22,7 +26,7 @@ class SafranTradingEnv(gym.Env):
         return self._next_observation()
 
     def _next_observation(self):
-        obs = self.df.iloc[self.current_step].values.tolist()
+        obs = self.df.iloc[self.current_step].to_numpy().tolist()
         obs.extend([self.balance, self.shares_held])
         return np.array(obs, dtype=np.float32)
 
