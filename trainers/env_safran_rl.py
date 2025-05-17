@@ -2,6 +2,7 @@ import gym
 import numpy as np
 from gym import spaces
 import logging
+import ta
 
 logging.basicConfig(
     filename='training_env.log',
@@ -17,6 +18,8 @@ class SafranTradingEnv(gym.Env):
         self.df["month"] = self.df["date"].dt.month
         self.df["weekday"] = self.df["date"].dt.weekday
         self.df.drop(columns=["date"], inplace=True)
+        self.df["rsi"] = ta.momentum.RSIIndicator(close=self.df["close"]).rsi()
+        self.df.dropna(inplace=True)
 
         self.initial_balance = initial_balance
         self.window_size = window_size
