@@ -4,7 +4,9 @@ import os
 import logging
 import matplotlib.pyplot as plt
 import torch
+import joblib
 from stable_baselines3 import PPO
+from trainers.lstm_trainer import LSTMModel, SEQ_LEN
 
 # Ajout du chemin pour les imports locaux
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -17,8 +19,13 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Charger les données
 df = pd.read_parquet("data/SAF_PA_clean.parquet")
+
+# Charger le scaler et le modèle LSTM
+scaler = joblib.load("models/lstm_scaler.save")
+lstm_model = LSTMModel(input_size=df.shape[1] - 1)  # exclude date if still present
+lstm_model.load_state_dict(torch.load("models/lstm_safran.pth", map_location="cpu"))
+lstm_model.eval()
 
 # Charger le modèle
 model_path = "models/ppo_safran_trader.zip"
@@ -44,6 +51,18 @@ while not done:
     total_value = env.balance + env.shares_held * current_price
     profits.append(total_value)
 
+    # Prédiction LSTM à chaque étape
+    if env.current_step >= SEQ_LEN:
+        seq = df.iloc[env.current_step - SEQ_LEN:env.current_step][['close', 'ma_5', 'ma_20', 'return_1d', 'rsi']].dropna().to_numpy()
+        seq_scaled = scaler.transform(seq)
+        input_seq = torch.FloatTensor(seq_scaled).unsqueeze(0)
+        with torch.no_grad():
+            pred_scaled = lstm_model(input_seq).item()
+        close_min, close_max = scaler.data_min_[0], scaler.data_max_[0]
+        predicted_price = pred_scaled * (close_max - close_min) + close_min
+    else:
+        predicted_price = None
+
     action_label = ['HOLD', 'BUY', 'SELL'][action]
     logging.info(f"Step {step} | Action: {action_label} | Reward: {reward:.2f}")
     actions_log.append({
@@ -51,8 +70,12 @@ while not done:
         "action": action_label,
         "price": current_price,
         "capital": total_value,
-        "reward": reward
+        "reward": reward,
+        "lstm_pred": predicted_price
     })
+
+    if predicted_price:
+        print(f"Step {step} | LSTM prédit : {predicted_price:.2f} €, Prix réel : {current_price:.2f}")
 
     step += 1
 
