@@ -3,6 +3,9 @@ import numpy as np
 from gym import spaces
 import logging
 import ta
+import torch
+import joblib
+from trainers.lstm_trainer import LSTMModel, SEQ_LEN
 
 logging.basicConfig(
     filename='training_env.log',
@@ -21,12 +24,17 @@ class SafranTradingEnv(gym.Env):
         self.df["rsi"] = ta.momentum.RSIIndicator(close=self.df["close"]).rsi()
         self.df.dropna(inplace=True)
 
+        self.scaler = joblib.load("models/lstm_scaler.save")
+        self.lstm_model = LSTMModel(input_size=len(self.df.columns))
+        self.lstm_model.load_state_dict(torch.load("models/lstm_safran.pth", map_location="cpu"))
+        self.lstm_model.eval()
+
         self.initial_balance = initial_balance
         self.window_size = window_size
         self.action_space = spaces.Discrete(3)  # 0: hold, 1: buy, 2: sell
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf,
-            shape=(window_size * len(self.df.columns) + 2,), dtype=np.float32
+            shape=(window_size * len(self.df.columns) + 3,), dtype=np.float32  # +1 pour LSTM, +2 balance/shares
         )
         self.reset()
         logging.info("🔁 Environnement réinitialisé")
@@ -44,6 +52,14 @@ class SafranTradingEnv(gym.Env):
         frame = self.df.iloc[self.current_step - self.window_size:self.current_step]
         obs = frame.to_numpy().flatten().tolist()
         obs.extend([self.balance, self.shares_held])
+
+        lstm_input = self.df.iloc[self.current_step - SEQ_LEN:self.current_step].to_numpy()
+        lstm_input = self.scaler.transform(lstm_input)
+        lstm_input = torch.FloatTensor(lstm_input).unsqueeze(0)
+        with torch.no_grad():
+            pred_scaled = self.lstm_model(lstm_input).item()
+        obs.append(pred_scaled)
+
         return np.array(obs, dtype=np.float32)
 
     def step(self, action):

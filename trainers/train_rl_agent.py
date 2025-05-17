@@ -26,6 +26,8 @@ df = pd.read_parquet("data/SAF_PA_clean.parquet")
 
 # 🔄 Environnement Gym personnalisé
 env = DummyVecEnv([lambda: SafranTradingEnv(df)])
+logging.info("🔗 Environnement avec LSTM fusionné initialisé")
+print("🔗 Environnement avec LSTM fusionné initialisé")
 
 # 🎯 Device
 device = "cuda" if torch.cuda.is_available() else "cpu"
