@@ -1,85 +1,47 @@
 import pandas as pd
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 import sys
 import os
-import logging
-import matplotlib.pyplot as plt
-import torch
-from stable_baselines3 import PPO
-
-# Ajout du chemin pour les imports locaux
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from trainers.env_safran_rl import SafranTradingEnv
-
-# Logger
-logging.basicConfig(
-    filename="simulation.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+from trainers.lstm_trainer import LSTMModel, SEQ_LEN
+import yfinance as yf
 
 # Charger les données
 df = pd.read_parquet("data/SAF_PA_clean.parquet")
+df = df[['close', 'ma_5', 'ma_20', 'return_1d']].dropna()
+
+# Scaler
+scaler = MinMaxScaler()
+scaled_data = scaler.fit_transform(df.values)
+
+# Prendre les dernières SEQ_LEN séquences
+latest_sequence = scaled_data[-SEQ_LEN:]
+input_seq = torch.FloatTensor(latest_sequence).unsqueeze(0)
 
 # Charger le modèle
-model_path = "models/ppo_safran_trader.zip"
-assert os.path.exists(model_path), "Modèle PPO introuvable, entraînez-le d'abord."
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = PPO.load(model_path, device=device)
+model = LSTMModel(input_size=input_seq.shape[2])
+model.load_state_dict(torch.load("models/lstm_safran.pth"))
+model.eval()
 
-# Environnement
-env = SafranTradingEnv(df)
-obs = env.reset()
+# Prédiction
+with torch.no_grad():
+    predicted_scaled = model(input_seq).item()
 
-done = False
-step = 0
-profits = []
-actions_log = []
+# Revenir à l’échelle réelle
+dummy_input = np.zeros((1, scaled_data.shape[1]))
+dummy_input[0, 0] = predicted_scaled  # seule la colonne 'close'
+predicted_real = scaler.inverse_transform(dummy_input)[0, 0]
 
-while not done:
-    action, _ = model.predict(obs)
-    obs, reward, done, _ = env.step(action)
-    env.render()
+print(f"📈 Prochaine prédiction de clôture : {predicted_real:.2f} €")
 
-    current_price = df.iloc[env.current_step]['close']
-    total_value = env.balance + env.shares_held * current_price
-    profits.append(total_value)
-
-    action_label = ['HOLD', 'BUY', 'SELL'][action]
-    logging.info(f"Step {step} | Action: {action_label} | Reward: {reward:.2f}")
-    actions_log.append({
-        "step": step,
-        "action": action_label,
-        "price": current_price,
-        "capital": total_value,
-        "reward": reward
-    })
-
-    step += 1
-
-# Résultat final
-profit = env.balance + env.shares_held * df.iloc[env.current_step]['close'] - env.initial_balance
-summary = f"💰 Profit final simulé : {profit:.2f} €"
-print("\n" + summary)
-logging.info(summary)
-
-# Enregistrer les actions
-pd.DataFrame(actions_log).to_csv("predict/actions_log.csv", index=False)
-
-# Graphique capital avec points BUY/SELL
-plt.figure(figsize=(12, 6))
-plt.plot(profits, label="Capital total")
-
-for entry in actions_log:
-    if entry['action'] == 'BUY':
-        plt.scatter(entry['step'], entry['capital'], color='green', label='BUY' if 'BUY' not in plt.gca().get_legend_handles_labels()[1] else "")
-    elif entry['action'] == 'SELL':
-        plt.scatter(entry['step'], entry['capital'], color='red', label='SELL' if 'SELL' not in plt.gca().get_legend_handles_labels()[1] else "")
-
-plt.title("Évolution du capital de l'agent PPO avec décisions")
-plt.xlabel("Jour")
-plt.ylabel("Capital (€)")
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
-plt.savefig("predict/profits_plot.png")
-plt.show()
+# Comparaison avec la valeur réelle de J-1 (si dispo)
+ticker = "SAF.PA"
+data = yf.download(ticker, period="2d", interval="1d")
+if not data.empty and "Close" in data.columns:
+    last_real_close = data["Close"].iloc[-1].item()
+    print(f"🔍 Clôture réelle la plus récente : {last_real_close:.2f} €")
+    delta = predicted_real - last_real_close
+    print(f"🔁 Écart prédiction / réel : {delta:.2f} €")
+else:
+    print("⚠️ Impossible de récupérer la clôture réelle pour comparaison.")
